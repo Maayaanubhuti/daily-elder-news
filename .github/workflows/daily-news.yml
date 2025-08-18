@@ -1,27 +1,35 @@
 name: 🌅 Fetch Daily Elder News
 
+# Trigger: Daily at 00:00 UTC (5:30 AM IST) + Manual Run
 on:
   schedule:
-    - cron: '0 0 * * *'   # Runs daily at 00:00 UTC (5:30 AM IST)
-  workflow_dispatch:       # Allows manual run
+    - cron: '0 0 * * *'   # Every day at midnight UTC
+  workflow_dispatch:       # Allows manual trigger
+
+# Grant permission to write to the repo
+permissions:
+  contents: write
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+      # Step 1: Checkout repo
+      - name: Checkout Repository
+        uses: actions/checkout@v4
 
+      # Step 2: Setup Node.js
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '18'
 
-      - name: Install dependencies
+      # Step 3: Install dependencies from package.json
+      - name: Install Dependencies
         run: npm install
 
-      - name: Run News Builder
+      # Step 4: Run the news builder script
+      - name: Fetch & Process News
         env:
           RSS2JSON_KEY: ${{ secrets.RSS2JSON_KEY }}
           CLOUDINARY_CLOUD_NAME: ${{ secrets.CLOUDINARY_CLOUD_NAME }}
@@ -29,23 +37,31 @@ jobs:
           API_SECRET: ${{ secrets.CLOUDINARY_API_SECRET }}
         run: node builder.js
 
-      - name: Commit & Push news-today.json
+      # Step 5: Verify the file was created
+      - name: Check news-today.json
         run: |
-          git config user.name "github-actions"
-          git config user.email "action@github.com"
+          if [ -f "news-today.json" ]; then
+            echo "✅ news-today.json created successfully"
+            ls -la news-today.json
+            cat news-today.json | head -5  # Show first few lines
+          else
+            echo "❌ Failed to generate news-today.json"
+            exit 1
+          fi
+
+      # Step 6: Commit and Push using Personal Access Token (PAT)
+      - name: Commit & Push to Main
+        run: |
+          git config user.name "Maaya Anubhuti"
+          git config user.email "maaya.anubhuti@gmail.com"
           
-          # Check current status
-          echo "🔍 Checking git status..."
-          git status
-
-          echo "📄 Creating news-today.json if not exists..."
-          touch news-today.json
-
-          echo "📌 Adding file..."
           git add news-today.json
-
-          echo "📝 Trying to commit..."
-          git commit -m "📰 Update news: $(date)" || exit 0
-
-          echo "🚀 Pushing to main branch..."
-          git push origin main || (echo "💥 Push failed! Check error above."; exit 1)
+          
+          # Only commit if there are changes
+          git diff --cached --exit-code || (git commit -m "📰 Auto-update: Daily Elder News" && echo "✅ Committed changes")
+          
+          # Force push using PAT
+          git remote set-url origin https://Maayaanubhuti:${{ secrets.PAT }}@github.com/Maayaanubhuti/daily-elder-news.git
+          git push origin main
+        env:
+          PAT: ${{ secrets.PAT }}  # Make sure PAT is available
