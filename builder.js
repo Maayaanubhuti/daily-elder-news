@@ -9,38 +9,35 @@ cloudinary.config({
   api_secret: process.env.API_SECRET,
 });
 
-// RSS Feeds
+// RSS Feeds (only high-quality sources)
 const RSS_FEEDS = [
   'https://www.theguardian.com/society/older-people/rss',
   'https://feeds.bbci.co.uk/news/health/ageing/rss.xml',
-  'https://timesofindia.indiatimes.com/rssfeeds/2886704.cms',
-  'https://indianexpress.com/section/india/rss',
-  'https://www.deccanherald.com/rss/lifestyle/feedpage/rss/0,2-9,0.xml',
-  'https://socialjustice.gov.in/cms/feed',
   'https://www.helpageindia.org/media-centre/news-and-updates/feed/',
-  'https://www.apa.org/monitor/rss.xml',
-  'https://www.sciencedaily.com/rss/mind_brain/aging_news.xml',
+  'https://socialjustice.gov.in/cms/feed',
   'https://www.who.int/feeds/atom/en/index.html'
 ];
 
-// Keywords about elderly care
+// Keywords related to elderly welfare
 const KEYWORDS = [
   "elderly", "senior", "old age", "pension", "neglect", "abuse", "fraud",
   "loneliness", "abandoned", "isolated", "caregiver", "geriatric", "elder rights",
-  "dementia", "Alzheimer", "care training", "volunteer", "elder welfare"
+  "dementia", "alzheimer", "care training", "volunteer", "elder welfare",
+  "maintenance act", "SCSS", "old age home", "daycare", "grandparent", "retirement",
+  "over 70", "over-70", "winter fuel", "elder care", "ageing", "aging"
 ];
 
 // Helper: extract image from HTML
 function extractImage(html, baseUrl) {
   if (!html) return null;
-  const dom = new JSDOM(html);
-  const img = dom.window.document.querySelector('img');
-  if (img && img.src) {
-    try {
-      return new URL(img.src, baseUrl).href; // Fix relative URLs
-    } catch {
-      return null;
+  try {
+    const dom = new JSDOM(html);
+    const img = dom.window.document.querySelector('img');
+    if (img && img.src) {
+      return new URL(img.src.trim(), baseUrl).href; // Resolve relative URLs
     }
+  } catch (e) {
+    return null;
   }
   return null;
 }
@@ -55,59 +52,75 @@ async function buildNews() {
 
   for (const url of RSS_FEEDS) {
     try {
+      const cleanUrl = url.trim();
       const res = await axios.get(
-        `https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(url)}&api_key=${process.env.RSS2JSON_KEY}`
+        `https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(cleanUrl)}&api_key=${process.env.RSS2JSON_KEY}`
       );
       const feed = res.data;
-      if (feed.status !== 'ok') continue;
+      if (feed.status !== 'ok') {
+        console.log(`❌ Failed feed: ${cleanUrl}`);
+        continue;
+      }
 
       for (const item of feed.items) {
-        if (seenTitles.has(item.title)) continue;
+        const title = item.title?.trim();
+        const link = item.link?.trim();
+        if (!title || !link || seenTitles.has(title)) continue;
 
-        const content = `${item.title} ${item.description}`.toLowerCase();
-        const matches = KEYWORDS.some(k => content.includes(k.toLowerCase()));
+        // Combine content for keyword search
+        const content = `${title} ${item.description || ''} ${item.content || ''}`.toLowerCase();
+        const hasKeyword = KEYWORDS.some(k => content.includes(k.toLowerCase()));
 
-        // Only keep if keyword matches or we don’t have enough yet
-        if (!matches && allNews.length >= 15) continue;
+        // Only allow if keyword matches
+        if (!hasKeyword) {
+          console.log("Skipped (no keyword):", title);
+          continue;
+        }
 
-        seenTitles.add(item.title);
+        seenTitles.add(title);
 
         // Find best image
-        let imgUrl = item.thumbnail || item.enclosure?.link;
-        if (!imgUrl) imgUrl = extractImage(item.description, item.link) || extractImage(item.content, item.link);
-        if (!imgUrl) imgUrl = `https://source.unsplash.com/random/800x400/?elderly,senior`;
+        let imgUrl = item.thumbnail?.trim() || 
+                     item.enclosure?.link?.trim();
+
+        if (!imgUrl) {
+          imgUrl = extractImage(item.description, link) ||
+                   extractImage(item.content, link);
+        }
 
         // Upload to Cloudinary
         let cloudinaryUrl = null;
-        try {
-          const uploadResult = await cloudinary.uploader.upload(imgUrl, {
-            folder: 'daily-pulse',
-            width: 800,
-            height: 400,
-            crop: 'fill',
-            gravity: 'auto',
-            quality: 'auto:good',
-            fetch_format: 'auto'
-          });
-          cloudinaryUrl = uploadResult.secure_url;
-        } catch (e) {
-          console.log("Failed to upload:", item.title);
+        if (imgUrl) {
+          try {
+            const result = await cloudinary.uploader.upload(imgUrl, {
+              folder: 'daily-pulse',
+              width: 800,
+              height: 400,
+              crop: 'fill',
+              gravity: 'auto',
+              quality: 'auto:good',
+              fetch_format: 'auto'
+            });
+            cloudinaryUrl = result.secure_url;
+          } catch (e) {
+            console.log("Upload failed:", title, e.message);
+          }
         }
 
         allNews.push({
-          title: item.title,
-          link: item.link,
-          image: cloudinaryUrl || `https://source.unsplash.com/random/800x400/?elderly,portrait`,
+          title: title,
+          link: link,
+          image: cloudinaryUrl || `https://source.unsplash.com/random/800x400/?elderly,india,portrait`,
           pubDate: item.pubDate,
           pubDateString: new Date(item.pubDate).toLocaleDateString(),
-          source: feed.feed?.title || 'Unknown'
+          source: feed.feed?.title?.trim() || 'Unknown Source'
         });
 
-        if (allNews.length >= 15) break;
+        if (allNews.length >= 10) break; // Max 10 news items
       }
-      if (allNews.length >= 15) break;
+      if (allNews.length >= 10) break;
     } catch (e) {
-      console.log("Error fetching feed:", e.message);
+      console.error("Error fetching feed:", e.message);
     }
   }
 
@@ -115,8 +128,13 @@ async function buildNews() {
   allNews.sort((a, b) => new Date(b.pubDate) - new Date(a.pubDate));
 
   // Save to file
-  require('fs').writeFileSync('news-today.json', JSON.stringify(allNews, null, 2));
-  console.log('✅ News built and saved!');
+  const fs = require('fs');
+  fs.writeFileSync('news-today.json', JSON.stringify(allNews, null, 2));
+  console.log('✅ Successfully generated news-today.json with', allNews.length, 'articles');
+  console.log('📄 Check: https://raw.githubusercontent.com/Maayaanubhuti/daily-elder-news/main/news-today.json');
 }
 
-buildNews().catch(err => console.error(err));
+buildNews().catch(err => {
+  console.error('❌ Script failed:', err);
+  process.exit(1);
+});
