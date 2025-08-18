@@ -33,11 +33,19 @@ jobs:
         run: |
           git config user.name "github-actions"
           git config user.email "action@github.com"
+          
+          # Check current status
+          echo "🔍 Checking git status..."
+          git status
+
+          echo "📄 Creating news-today.json if not exists..."
+          touch news-today.json
+
+          echo "📌 Adding file..."
           git add news-today.json
-          git status  # Debug: see what's going on
-          if git commit -m "📰 Update news: $(date)"; then
-            git push origin main
-            echo "✅ Successfully pushed news-today.json"
-          else
-            echo "🤷 No changes to commit (file already up-to-date)"
-          fi
+
+          echo "📝 Trying to commit..."
+          git commit -m "📰 Update news: $(date)" || exit 0
+
+          echo "🚀 Pushing to main branch..."
+          git push origin main || (echo "💥 Push failed! Check error above."; exit 1)
