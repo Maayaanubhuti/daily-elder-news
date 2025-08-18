@@ -2,7 +2,7 @@ name: 🌅 Fetch Daily Elder News
 
 on:
   schedule:
-    - cron: '0 0 * * *'   # Runs every day at 00:00 UTC (5:30 AM India time)
+    - cron: '0 0 * * *'   # Runs daily at 00:00 UTC (5:30 AM IST)
   workflow_dispatch:       # Allows manual run
 
 jobs:
@@ -10,6 +10,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -32,5 +34,10 @@ jobs:
           git config user.name "github-actions"
           git config user.email "action@github.com"
           git add news-today.json
-          git commit -m "📰 Update news: $(date)" || echo "No changes"
-          git push origin main
+          git status  # Debug: see what's going on
+          if git commit -m "📰 Update news: $(date)"; then
+            git push origin main
+            echo "✅ Successfully pushed news-today.json"
+          else
+            echo "🤷 No changes to commit (file already up-to-date)"
+          fi
