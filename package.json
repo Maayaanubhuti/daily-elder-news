@@ -1,0 +1,13 @@
+{
+  "name": "daily-elder-news",
+  "version": "1.0.0",
+  "main": "builder.js",
+  "scripts": {
+    "start": "node builder.js"
+  },
+  "dependencies": {
+    "axios": "^1.6.0",
+    "cloudinary": "^1.40.0",
+    "jsdom": "^20.0.0"
+  }
+}
