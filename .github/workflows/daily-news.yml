@@ -1,0 +1,36 @@
+name: 🌅 Fetch Daily Elder News
+
+on:
+  schedule:
+    - cron: '0 0 * * *'   # Runs every day at 00:00 UTC (5:30 AM India time)
+  workflow_dispatch:       # Allows manual run
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run News Builder
+        env:
+          RSS2JSON_KEY: ${{ secrets.RSS2JSON_KEY }}
+          CLOUDINARY_CLOUD_NAME: ${{ secrets.CLOUDINARY_CLOUD_NAME }}
+          API_KEY: ${{ secrets.CLOUDINARY_API_KEY }}
+          API_SECRET: ${{ secrets.CLOUDINARY_API_SECRET }}
+        run: node builder.js
+
+      - name: Commit & Push news-today.json
+        run: |
+          git config user.name "github-actions"
+          git config user.email "action@github.com"
+          git add news-today.json
+          git commit -m "📰 Update news: $(date)" || echo "No changes"
+          git push origin main
